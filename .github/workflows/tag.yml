@@ -1,0 +1,55 @@
+name: 'ReleaseWithTag'
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: read
+
+jobs:
+  PR:
+    name: 'ReleaseWithTag'
+    runs-on:
+      labels: self-hosted
+    #    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install NodeJS Dependencies
+        run: npm install
+
+      - name: Build
+        run: |
+          echo $GITHUB_REF_NAME > VERSION
+          zip -r cart-$GITHUB_REF_NAME.zip *
+
+      - name: Release App
+        run: |
+          curl -sSf -u "admin:$ARTIFACTORY_PASSWORD" -X PUT  -T cart-$GITHUB_REF_NAME.zip http://artifactory.rdevopsb72.online:8081/artifactory/cart/cart-$GITHUB_REF_NAME.zip
+        env:
+          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+
+      - name: Deploy to Dev Env
+        run: |
+          curl "http://gocd.rdevopsb72.online:8153/go/api/pipelines/MutableDeployment_RoboShop_cart/schedule" -H 'Accept: application/vnd.go.cd.v1+json' -H 'Content-Type: application/json' \
+                 -X POST \
+                 -d "{
+                       \"environment_variables\": [
+                         {
+                           \"name\": \"APP_VERSION\",
+                           \"secure\": false,
+                           \"value\": \"${GITHUB_REF_NAME}\"
+                         }
+                       ],
+                       \"update_materials_before_scheduling\": true
+                     }"
+
+        env:
+          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
